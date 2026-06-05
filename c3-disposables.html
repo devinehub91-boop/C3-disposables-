@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>C3 Disposables</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,-apple-system,sans-serif;background:#f5f4f0}
+input,select,textarea,button{font-family:inherit}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback } = React;
+
+// ── Supabase ─────────────────────────────────────────────────────────────────
+const SUPA_URL = "https://melcdlszwdncmdduhnmu.supabase.co";
+const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1lbGNkbHN6d2RuY21kZHVobm11Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2MzM2NzksImV4cCI6MjA5NjIwOTY3OX0.UZMALYotJisKPYTCv8AatKRVrud7nBrlcSdafMMrTg8";
+const H = {"Content-Type":"application/json","apikey":SUPA_KEY,"Authorization":`Bearer ${SUPA_KEY}`,"Prefer":"return=representation"};
+const db = {
+  async get(t,p=""){const r=await fetch(`${SUPA_URL}/rest/v1/${t}?${p}`,{headers:H});if(!r.ok)throw new Error(await r.text());return r.json();},
+  async post(t,b){const r=await fetch(`${SUPA_URL}/rest/v1/${t}`,{method:"POST",headers:H,body:JSON.stringify(b)});if(!r.ok)throw new Error(await r.text());return r.json();},
+  async patch(t,id,b,ic="id"){const r=await fetch(`${SUPA_URL}/rest/v1/${t}?${ic}=eq.${id}`,{method:"PATCH",headers:H,body:JSON.stringify(b)});if(!r.ok)throw new Error(await r.text());return r.json();},
+  async del(t,id){const r=await fetch(`${SUPA_URL}/rest/v1/${t}?id=eq.${id}`,{method:"DELETE",headers:H});if(!r.ok)throw new Error(await r.text());}
+};
+
+// ── Constants ────────────────────────────────────────────────────────────────
+const CAT_DISP="Disposables/Packs", CAT_PLASTIC="Plastics/Rubber";
+const ROLE_ACCESS={ceo:["dashboard","products","sales","reports","restock","staff","orders"],admin:["dashboard","products","sales","reports","restock","orders"]};
+const NAV=[{id:"dashboard",label:"Dashboard",icon:"📊"},{id:"products",label:"Products",icon:"📦"},{id:"sales",label:"Record Sale",icon:"🧾"},{id:"orders",label:"Orders",icon:"🛍️"},{id:"reports",label:"Reports",icon:"📈"},{id:"restock",label:"Restock",icon:"🔄"},{id:"staff",label:"Staff",icon:"👥"}];
+const GH_REGIONS=["Greater Accra","Ashanti","Western","Eastern","Central","Northern","Upper East","Upper West","Volta","Oti","Savannah","North East","Bono","Bono East","Ahafo","Western North"];
+
+// ── UI Atoms ─────────────────────────────────────────────────────────────────
+const iS={width:"100%",padding:"8px 10px",border:"1px solid #ddd",borderRadius:8,fontSize:13,background:"#fff",color:"#333",outline:"none"};
+const Inp=(p)=><input style={iS} {...p}/>;
+const Sel=({children,...p})=><select style={iS} {...p}>{children}</select>;
+const Txt=(p)=><textarea style={{...iS,resize:"vertical",minHeight:70}} {...p}/>;
+
+function Btn({children,onClick,primary,danger,sm,style,disabled}){
+  return <button disabled={disabled} onClick={onClick} style={{padding:sm?"5px 10px":"8px 16px",borderRadius:8,fontSize:sm?12:13,cursor:disabled?"not-allowed":"pointer",display:"inline-flex",alignItems:"center",gap:5,border:danger?"1px solid #E24B4A":"1px solid #ddd",background:primary?"#1a1a1a":"#fff",color:primary?"#fff":danger?"#E24B4A":"#333",opacity:disabled?0.5:1,fontWeight:primary?600:400,...style}}>{children}</button>;
+}
+function Card({title,children,style}){
+  return <div style={{background:"#fff",border:"1px solid #e5e4df",borderRadius:12,padding:"16px 20px",...style}}>{title&&<div style={{fontWeight:700,fontSize:14,marginBottom:14}}>{title}</div>}{children}</div>;
+}
+function FG({label,children}){return <div style={{marginBottom:10}}><label style={{display:"block",fontSize:12,color:"#888",marginBottom:5}}>{label}</label>{children}</div>;}
+function MCard({label,value,sub,danger,color}){
+  return <div style={{background:"#fff",borderRadius:10,padding:"14px 16px",border:"1px solid #e5e4df"}}><div style={{fontSize:12,color:"#888",marginBottom:6}}>{label}</div><div style={{fontSize:22,fontWeight:700,color:danger?"#E24B4A":color||"#1a1a1a"}}>{value}</div>{sub&&<div style={{fontSize:11,color:"#aaa",marginTop:3}}>{sub}</div>}</div>;
+}
+function Badge({text,bg,color}){return <span style={{background:bg,color,fontSize:11,padding:"2px 8px",borderRadius:20,fontWeight:500}}>{text}</span>;}
+function SBadge({status}){
+  const m={pending:["#FFF3CD","#856404"],confirmed:["#D1ECF1","#0C5460"],processing:["#E2E3FF","#383980"],shipped:["#D4EDDA","#155724"],delivered:["#C3E6CB","#155724"],cancelled:["#F8D7DA","#721C24"]};
+  const [bg,c]=m[status]||["#eee","#333"];
+  return <Badge text={status.charAt(0).toUpperCase()+status.slice(1)} bg={bg} color={c}/>;
+}
+function catB(c){return c===CAT_DISP?{bg:"#E1F5EE",color:"#0F6E56"}:{bg:"#E6F1FB",color:"#185FA5"};}
+function Spinner(){return <div style={{display:"flex",alignItems:"center",justifyContent:"center",padding:40}}><div style={{width:32,height:32,border:"3px solid #e5e4df",borderTop:"3px solid #1a1a1a",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/></div>;}
+
+function ImgPicker({value,onChange}){
+  const ref=useRef();
+  const hf=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>onChange(ev.target.result);r.readAsDataURL(f);};
+  return <div style={{display:"flex",alignItems:"center",gap:10}}>
+    {value?<img src={value} alt="" style={{width:52,height:52,objectFit:"cover",borderRadius:8,border:"1px solid #ddd"}}/>:<div style={{width:52,height:52,background:"#f0efe9",borderRadius:8,border:"1px dashed #ccc",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20}}>📷</div>}
+    <div><Btn sm onClick={()=>ref.current.click()}>📁 {value?"Change":"Upload"}</Btn>{value&&<Btn sm danger onClick={()=>onChange("")} style={{marginLeft:6}}>Remove</Btn>}</div>
+    <input ref={ref} type="file" accept="image/*" style={{display:"none"}} onChange={hf}/>
+  </div>;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// ROOT APP
+// ════════════════════════════════════════════════════════════════════════════
+function App(){
+  const [mode,setMode]=useState("store");
+  const [user,setUser]=useState(null);
+  const [tab,setTab]=useState("dashboard");
+  const [products,setProducts]=useState([]);
+  const [sales,setSales]=useState([]);
+  const [restocks,setRestocks]=useState([]);
+  const [orders,setOrders]=useState([]);
+  const [users,setUsers]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [cart,setCart]=useState([]);
+
+  const loadAll=useCallback(async()=>{
+    setLoading(true);
+    try{
+      const [p,s,r,o,u]=await Promise.all([db.get("products","order=id.asc"),db.get("sales","order=id.desc"),db.get("restocks","order=id.desc"),db.get("orders","order=time.desc"),db.get("users","order=id.asc")]);
+      setProducts(p);setSales(s);setRestocks(r);setOrders(o);setUsers(u);
+    }catch(e){alert("Database error: "+e.message);}
+    setLoading(false);
+  },[]);
+
+  useEffect(()=>{loadAll();},[loadAll]);
+  useEffect(()=>{const i=setInterval(loadAll,30000);return()=>clearInterval(i);},[loadAll]);
+
+  const ModeBar=()=>(
+    <div style={{position:"fixed",bottom:16,right:16,zIndex:100,display:"flex",gap:6,background:"#1a1a1a",borderRadius:30,padding:"6px 10px",boxShadow:"0 4px 20px rgba(0,0,0,.3)"}}>
+      <button onClick={()=>setMode("store")} style={{padding:"6px 14px",borderRadius:20,border:"none",background:mode==="store"?"#fff":"transparent",color:mode==="store"?"#1a1a1a":"#fff",fontSize:12,cursor:"pointer",fontWeight:600}}>🛍️ Store</button>
+      <button onClick={()=>setMode("staff")} style={{padding:"6px 14px",borderRadius:20,border:"none",background:mode==="staff"?"#fff":"transparent",color:mode==="staff"?"#1a1a1a":"#fff",fontSize:12,cursor:"pointer",fontWeight:600}}>⚙️ Staff</button>
+    </div>
+  );
+
+  if(loading)return(
+    <div style={{minHeight:"100vh",background:"#f5f4f0",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:12}}>
+      <div style={{fontSize:48}}>📦</div>
+      <div style={{fontWeight:700,fontSize:20}}>C3 Disposables</div>
+      <div style={{fontSize:13,color:"#888"}}>Connecting to database...</div>
+      <Spinner/>
+    </div>
+  );
+
+  if(mode==="store")return <><Storefront products={products} orders={orders} loadAll={loadAll}/><ModeBar/></>;
+  if(!user)return <><Login onLogin={setUser} users={users}/><ModeBar/></>;
+
+  const allowed=ROLE_ACCESS[user.role]||[];
+  const visNav=NAV.filter(n=>allowed.includes(n.id));
+  const sTab=allowed.includes(tab)?tab:allowed[0];
+
+  return(
+    <div style={{fontFamily:"system-ui,sans-serif",background:"#f5f4f0",minHeight:"100vh"}}>
+      <div style={{background:"#fff",borderBottom:"1px solid #e5e4df",padding:"11px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:10,flexWrap:"wrap",gap:8}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,fontWeight:700,fontSize:15}}>
+          📦 C3 Disposables
+          <span style={{fontSize:11,fontWeight:400,background:"#f0efe9",color:"#888",padding:"2px 8px",borderRadius:20}}>{user.role==="ceo"?"CEO":user.name}</span>
+        </div>
+        <div style={{display:"flex",gap:2,flexWrap:"wrap"}}>
+          {visNav.map(n=><button key={n.id} onClick={()=>setTab(n.id)} style={{padding:"6px 10px",borderRadius:8,border:"none",background:sTab===n.id?"#f0efe9":"transparent",fontWeight:sTab===n.id?700:400,fontSize:12,cursor:"pointer",color:"#333"}}>{n.icon} {n.label}</button>)}
+        </div>
+        <div style={{display:"flex",gap:6}}>
+          <Btn sm onClick={loadAll}>🔄</Btn>
+          <Btn sm danger onClick={()=>{setUser(null);setCart([]);setTab("dashboard");}}>Sign out</Btn>
+        </div>
+      </div>
+      <div style={{padding:16}}>
+        {sTab==="dashboard"&&<Dashboard products={products} sales={sales} restocks={restocks} orders={orders}/>}
+        {sTab==="products"&&<Products products={products} loadAll={loadAll}/>}
+        {sTab==="sales"&&<SaleRecorder products={products} sales={sales} cart={cart} setCart={setCart} user={user} loadAll={loadAll}/>}
+        {sTab==="orders"&&<Orders orders={orders} products={products} loadAll={loadAll}/>}
+        {sTab==="reports"&&<Reports sales={sales} restocks={restocks} orders={orders}/>}
+        {sTab==="restock"&&<Restock products={products} restocks={restocks} user={user} loadAll={loadAll}/>}
+        {sTab==="staff"&&<Staff users={users} loadAll={loadAll}/>}
+      </div>
+      <ModeBar/>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// LOGIN
+// ════════════════════════════════════════════════════════════════════════════
+function Login({onLogin,users}){
+  const [un,setUn]=useState(""),[pw,setPw]=useState(""),[err,setErr]=useState("");
+  const go=()=>{const u=users.find(u=>u.username===un&&u.password===pw);if(u){setErr("");onLogin(u);}else setErr("Invalid username or password.");};
+  return(
+    <div style={{minHeight:"100vh",background:"#f5f4f0",display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <div style={{background:"#fff",borderRadius:16,padding:"36px 28px",width:"100%",maxWidth:360,border:"1px solid #e5e4df",boxShadow:"0 4px 24px rgba(0,0,0,.07)"}}>
+        <div style={{textAlign:"center",marginBottom:28}}>
+          <div style={{fontSize:48,marginBottom:8}}>📦</div>
+          <div style={{fontSize:20,fontWeight:700}}>C3 Disposables</div>
+          <div style={{fontSize:13,color:"#999",marginTop:4}}>Staff login</div>
+        </div>
+        <FG label="Username"><Inp value={un} onChange={e=>setUn(e.target.value)} placeholder="Enter username"/></FG>
+        <FG label="Password"><Inp type="password" value={pw} onChange={e=>setPw(e.target.value)} onKeyDown={e=>e.key==="Enter"&&go()} placeholder="Enter password"/></FG>
+        {err&&<div style={{fontSize:12,color:"#E24B4A",marginBottom:10}}>{err}</div>}
+        <Btn primary onClick={go} style={{width:"100%",justifyContent:"center",marginTop:4}}>Sign in →</Btn>
+        <div style={{marginTop:16,padding:10,background:"#f8f7f3",borderRadius:8,fontSize:11,color:"#999"}}>Default: <strong>ceo</strong> / <strong>ceo123</strong></div>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// STOREFRONT
+// ════════════════════════════════════════════════════════════════════════════
+function Storefront({products,orders,loadAll}){
+  const [view,setView]=useState("shop");
+  const [cart,setCart]=useState([]);
+  const [filter,setFilter]=useState("All");
+  const [search,setSearch]=useState("");
+  const [orderId,setOrderId]=useState(null);
+  const [saving,setSaving]=useState(false);
+  const [form,setForm]=useState({name:"",phone:"",email:"",region:"Greater Accra",address:"",delivery:"delivery",payment:"momo",momoNetwork:"MTN",momoNumber:"",notes:""});
+  const sf=(k,v)=>setForm(f=>({...f,[k]:v}));
+  const pub=products.filter(p=>p.stock>0);
+  const filtered=pub.filter(p=>(filter==="All"||p.cat===filter)&&p.name.toLowerCase().includes(search.toLowerCase()));
+  const total=cart.reduce((s,c)=>s+c.qty*c.price,0);
+  const count=cart.reduce((s,c)=>s+c.qty,0);
+  const add=prod=>{const ex=cart.find(c=>c.id===prod.id);if(ex){if(ex.qty>=prod.stock){alert("Max stock reached.");return;}setCart(cart.map(c=>c.id===prod.id?{...c,qty:c.qty+1}:c));}else setCart([...cart,{id:prod.id,name:prod.name,image:prod.image||"",price:prod.price,qty:1,stock:prod.stock}]);};
+  const cq=(id,d)=>setCart(cart.map(c=>c.id===id?{...c,qty:Math.max(1,Math.min(c.qty+d,c.stock))}:c));
+  const rm=id=>setCart(cart.filter(c=>c.id!==id));
+  const place=async()=>{
+    if(!form.name||!form.phone){alert("Enter your name and phone.");return;}
+    if(form.delivery==="delivery"&&!form.address){alert("Enter delivery address.");return;}
+    if(form.payment==="momo"&&!form.momoNumber){alert("Enter MoMo number.");return;}
+    setSaving(true);
+    try{const oid="C3-"+Date.now().toString().slice(-6);await db.post("orders",{id:oid,time:new Date().toISOString(),customer:form,items:cart.map(c=>({...c})),total,status:"pending"});setOrderId(oid);setCart([]);setView("success");loadAll();}
+    catch(e){alert("Error: "+e.message);}
+    setSaving(false);
+  };
+
+  if(view==="success")return(
+    <div style={{minHeight:"100vh",background:"#f5f4f0",display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <div style={{background:"#fff",borderRadius:16,padding:36,maxWidth:440,width:"100%",textAlign:"center",border:"1px solid #e5e4df"}}>
+        <div style={{fontSize:56,marginBottom:12}}>🎉</div>
+        <div style={{fontSize:22,fontWeight:700,marginBottom:8}}>Order Placed!</div>
+        <div style={{fontSize:13,color:"#666",marginBottom:12}}>Your order ID:</div>
+        <div style={{fontSize:24,fontWeight:700,background:"#f0efe9",padding:"12px 20px",borderRadius:10,letterSpacing:2,marginBottom:12}}>{orderId}</div>
+        <div style={{fontSize:13,color:"#888",marginBottom:24}}>We'll contact you on <strong>{form.phone}</strong> to confirm.</div>
+        <Btn primary onClick={()=>setView("shop")} style={{width:"100%",justifyContent:"center"}}>Continue Shopping</Btn>
+      </div>
+    </div>
+  );
+
+  return(
+    <div style={{minHeight:"100vh",background:"#f5f4f0"}}>
+      <div style={{background:"#1a1a1a",color:"#fff",padding:"14px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:10}}>
+        <div><div style={{fontWeight:700,fontSize:17}}>📦 C3 Disposables</div><div style={{fontSize:11,color:"#aaa"}}>Ghana Wide Delivery · MTN MoMo · Cash on Delivery</div></div>
+        <button onClick={()=>setView(view==="cart"?"shop":"cart")} style={{background:"none",border:"1px solid #444",borderRadius:8,color:"#fff",padding:"7px 12px",cursor:"pointer",fontSize:13,display:"flex",alignItems:"center",gap:6}}>
+          🛒 {count>0&&<span style={{background:"#E24B4A",borderRadius:20,padding:"1px 6px",fontSize:11}}>{count}</span>}
+        </button>
+      </div>
+
+      {view==="shop"&&<>
+        <div style={{background:"linear-gradient(135deg,#1a1a1a,#3a3a3a)",color:"#fff",padding:"32px 20px",textAlign:"center"}}>
+          <div style={{fontSize:26,fontWeight:700,marginBottom:6}}>Disposables & Plastic Bags</div>
+          <div style={{fontSize:13,color:"#ccc",marginBottom:16}}>Wholesale & retail · All Ghana delivery</div>
+          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Search products..." style={{maxWidth:360,width:"100%",padding:"10px 14px",borderRadius:8,border:"none",fontSize:13,outline:"none"}}/>
+        </div>
+        <div style={{maxWidth:1000,margin:"0 auto",padding:"20px 16px"}}>
+          <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"}}>
+            {["All",CAT_DISP,CAT_PLASTIC].map(f=><button key={f} onClick={()=>setFilter(f)} style={{padding:"6px 14px",borderRadius:20,border:"1px solid #ddd",background:filter===f?"#1a1a1a":"#fff",color:filter===f?"#fff":"#333",fontSize:12,cursor:"pointer",fontWeight:filter===f?600:400}}>{f==="All"?"All Products":f}</button>)}
+          </div>
+          {filtered.length===0?<div style={{textAlign:"center",padding:60,color:"#aaa"}}>No products available.</div>
+          :<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:14}}>
+            {filtered.map(p=>{const inCart=cart.find(c=>c.id===p.id),b=catB(p.cat);return(
+              <div key={p.id} style={{background:"#fff",borderRadius:12,border:"1px solid #e5e4df",overflow:"hidden",display:"flex",flexDirection:"column"}}>
+                <div style={{height:140,background:"#f0efe9",display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
+                  {p.image?<img src={p.image} alt={p.name} style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<div style={{fontSize:40}}>📦</div>}
+                </div>
+                <div style={{padding:"10px 12px",flex:1,display:"flex",flexDirection:"column"}}>
+                  <Badge text={p.cat} bg={b.bg} color={b.color}/>
+                  <div style={{fontWeight:600,fontSize:13,marginTop:5,marginBottom:3}}>{p.name}</div>
+                  <div style={{fontSize:12,color:"#888",marginBottom:2}}>Wholesale: GH₵{Number(p.wholesale).toFixed(2)}</div>
+                  <div style={{fontSize:16,fontWeight:700,marginBottom:6}}>GH₵{Number(p.price).toFixed(2)}</div>
+                  <div style={{fontSize:11,color:p.stock<10?"#E24B4A":"#888",marginBottom:8}}>{p.stock<10?`⚠️ Only ${p.stock} left`:`✅ In stock`}</div>
+                  {inCart?<div style={{display:"flex",alignItems:"center",gap:6,marginTop:"auto"}}>
+                    <button onClick={()=>cq(p.id,-1)} style={{width:26,height:26,border:"1px solid #ddd",background:"#f0efe9",borderRadius:5,cursor:"pointer",fontSize:16}}>−</button>
+                    <span style={{fontWeight:700,minWidth:20,textAlign:"center"}}>{inCart.qty}</span>
+                    <button onClick={()=>cq(p.id,1)} style={{width:26,height:26,border:"1px solid #ddd",background:"#f0efe9",borderRadius:5,cursor:"pointer",fontSize:16}}>+</button>
+                    <button onClick={()=>rm(p.id)} style={{marginLeft:"auto",border:"none",background:"none",cursor:"pointer",color:"#E24B4A",fontSize:11}}>Remove</button>
+                  </div>:<button onClick={()=>add(p)} style={{marginTop:"auto",width:"100%",padding:"8px",borderRadius:7,border:"none",background:"#1a1a1a",color:"#fff",fontSize:12,cursor:"pointer",fontWeight:600}}>Add to Cart</button>}
+                </div>
+              </div>
+            );})}
+          </div>}
+        </div>
+      </>}
+
+      {view==="cart"&&<div style={{maxWidth:640,margin:"0 auto",padding:"20px 16px"}}>
+        <h2 style={{marginBottom:14,fontWeight:700}}>🛒 Your Cart</h2>
+        {cart.length===0?<div style={{textAlign:"center",padding:50,color:"#aaa"}}><div style={{fontSize:40,marginBottom:12}}>🛒</div><div>Your cart is empty</div><Btn primary onClick={()=>setView("shop")} style={{marginTop:14}}>Browse Products</Btn></div>
+        :<>
+          {cart.map(c=><div key={c.id} style={{background:"#fff",border:"1px solid #e5e4df",borderRadius:10,padding:"10px 14px",marginBottom:8,display:"flex",alignItems:"center",gap:10}}>
+            {c.image?<img src={c.image} alt="" style={{width:44,height:44,objectFit:"cover",borderRadius:6,border:"1px solid #eee"}}/>:<div style={{width:44,height:44,background:"#f0efe9",borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20}}>📦</div>}
+            <div style={{flex:1}}><div style={{fontWeight:600,fontSize:13}}>{c.name}</div><div style={{fontSize:12,color:"#888"}}>GH₵{c.price.toFixed(2)} each</div></div>
+            <div style={{display:"flex",alignItems:"center",gap:6}}>
+              <button onClick={()=>cq(c.id,-1)} style={{width:26,height:26,border:"1px solid #ddd",background:"#f0efe9",borderRadius:5,cursor:"pointer",fontSize:16}}>−</button>
+              <span style={{fontWeight:700,minWidth:18,textAlign:"center"}}>{c.qty}</span>
+              <button onClick={()=>cq(c.id,1)} style={{width:26,height:26,border:"1px solid #ddd",background:"#f0efe9",borderRadius:5,cursor:"pointer",fontSize:16}}>+</button>
+            </div>
+            <div style={{fontWeight:700,minWidth:70,textAlign:"right",fontSize:13}}>GH₵{(c.qty*c.price).toFixed(2)}</div>
+            <button onClick={()=>rm(c.id)} style={{border:"none",background:"none",cursor:"pointer",color:"#bbb",fontSize:18}}>×</button>
+          </div>)}
+          <div style={{background:"#fff",border:"1px solid #e5e4df",borderRadius:10,padding:"12px 14px",marginTop:10,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span style={{color:"#666"}}>Total ({count} items)</span>
+            <span style={{fontSize:20,fontWeight:700}}>GH₵{total.toFixed(2)}</span>
+          </div>
+          <div style={{display:"flex",gap:10,marginTop:12}}>
+            <Btn onClick={()=>setView("shop")} style={{flex:1,justifyContent:"center"}}>← Back</Btn>
+            <Btn primary onClick={()=>setView("checkout")} style={{flex:1,justifyContent:"center"}}>Checkout →</Btn>
+          </div>
+        </>}
+      </div>}
+
+      {view==="checkout"&&<div style={{maxWidth:700,margin:"0 auto",padding:"20px 16px"}}>
+        <h2 style={{marginBottom:14,fontWeight:700}}>📋 Checkout</h2>
+        <Card title="📍 Your details" style={{marginBottom:14}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            <FG label="Full name *"><Inp value={form.name} onChange={e=>sf("name",e.target.value)} placeholder="Your full name"/></FG>
+            <FG label="Phone *"><Inp value={form.phone} onChange={e=>sf("phone",e.target.value)} placeholder="024XXXXXXX"/></FG>
+            <FG label="Email"><Inp type="email" value={form.email} onChange={e=>sf("email",e.target.value)} placeholder="Optional"/></FG>
+            <FG label="Region"><Sel value={form.region} onChange={e=>sf("region",e.target.value)}>{GH_REGIONS.map(r=><option key={r} value={r}>{r}</option>)}</Sel></FG>
+          </div>
+          <FG label="Fulfilment">
+            <div style={{display:"flex",gap:8}}>
+              {[["delivery","🚚 Delivery"],["pickup","🏪 Pickup"]].map(([v,l])=><button key={v} onClick={()=>sf("delivery",v)} style={{flex:1,padding:"9px",borderRadius:8,border:`2px solid ${form.delivery===v?"#1a1a1a":"#ddd"}`,background:form.delivery===v?"#1a1a1a":"#fff",color:form.delivery===v?"#fff":"#333",cursor:"pointer",fontSize:13,fontWeight:600}}>{l}</button>)}
+            </div>
+          </FG>
+          {form.delivery==="delivery"&&<FG label="Delivery address *"><Txt value={form.address} onChange={e=>sf("address",e.target.value)} placeholder="Street, landmark, area..."/></FG>}
+          <FG label="Notes"><Txt value={form.notes} onChange={e=>sf("notes",e.target.value)} placeholder="Any special instructions?"/></FG>
+        </Card>
+        <Card title="💳 Payment" style={{marginBottom:14}}>
+          <div style={{display:"flex",gap:8,marginBottom:12}}>
+            {[["momo","📱 Mobile Money"],["cod","💵 Cash on Delivery"]].map(([v,l])=><button key={v} onClick={()=>sf("payment",v)} style={{flex:1,padding:"9px",borderRadius:8,border:`2px solid ${form.payment===v?"#1a1a1a":"#ddd"}`,background:form.payment===v?"#1a1a1a":"#fff",color:form.payment===v?"#fff":"#333",cursor:"pointer",fontSize:13,fontWeight:600}}>{l}</button>)}
+          </div>
+          {form.payment==="momo"&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            <FG label="Network"><Sel value={form.momoNetwork} onChange={e=>sf("momoNetwork",e.target.value)}>{["MTN","Vodafone","AirtelTigo"].map(n=><option key={n} value={n}>{n}</option>)}</Sel></FG>
+            <FG label="MoMo number *"><Inp value={form.momoNumber} onChange={e=>sf("momoNumber",e.target.value)} placeholder="024XXXXXXX"/></FG>
+          </div>}
+          {form.payment==="cod"&&<div style={{background:"#FFF3CD",border:"1px solid #FFEAA7",borderRadius:8,padding:"10px 12px",fontSize:13,color:"#856404"}}>💡 Pay cash when your order arrives or at pickup.</div>}
+        </Card>
+        <Card title="🧾 Order summary">
+          {cart.map(c=><div key={c.id} style={{display:"flex",justifyContent:"space-between",fontSize:13,padding:"5px 0",borderBottom:"1px solid #f8f7f3"}}><span style={{color:"#555"}}>{c.name} × {c.qty}</span><span style={{fontWeight:600}}>GH₵{(c.qty*c.price).toFixed(2)}</span></div>)}
+          <div style={{display:"flex",justifyContent:"space-between",marginTop:10,paddingTop:10,borderTop:"2px solid #e5e4df"}}><span style={{fontWeight:700}}>Total</span><span style={{fontSize:18,fontWeight:700}}>GH₵{total.toFixed(2)}</span></div>
+          <Btn primary onClick={place} disabled={saving} style={{width:"100%",justifyContent:"center",marginTop:12,padding:"12px"}}>{saving?"Placing order...":"✓ Place Order — GH₵"+total.toFixed(2)}</Btn>
+          <Btn onClick={()=>setView("cart")} style={{width:"100%",justifyContent:"center",marginTop:8}}>← Back to cart</Btn>
+        </Card>
+      </div>}
+
+      <div style={{background:"#1a1a1a",color:"#aaa",padding:"24px 20px",marginTop:40,textAlign:"center",fontSize:13}}>
+        <div style={{fontWeight:700,color:"#fff",fontSize:15,marginBottom:6}}>📦 C3 Disposables</div>
+        <div>Quality Disposables & Plastic Bags · Delivery across all Ghana</div>
+        <div style={{marginTop:4}}>MTN MoMo · Vodafone Cash · AirtelTigo · Cash on Delivery</div>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// DASHBOARD
+// ════════════════════════════════════════════════════════════════════════════
+function Dashboard({products,sales,restocks,orders}){
+  const today=new Date().toDateString();
+  const tS=sales.filter(s=>new Date(s.time).toDateString()===today);
+  const rev=tS.reduce((s,x)=>s+Number(x.total),0);
+  const units=tS.reduce((s,x)=>s+x.items.reduce((a,i)=>a+i.qty,0),0);
+  const low=products.filter(p=>p.stock<=p.threshold);
+  const pending=orders.filter(o=>o.status==="pending");
+  const mRC=restocks.filter(r=>{const d=new Date(r.date),n=new Date();return d.getMonth()===n.getMonth()&&d.getFullYear()===n.getFullYear();}).reduce((s,r)=>s+Number(r.amount_paid),0);
+  return(
+    <div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10,marginBottom:16}}>
+        <MCard label="Today's revenue" value={`GH₵${rev.toFixed(2)}`} sub={`${tS.length} transactions`}/>
+        <MCard label="Units sold today" value={units}/>
+        <MCard label="Pending orders" value={pending.length} danger={pending.length>0} sub="online"/>
+        <MCard label="Restock cost" value={`GH₵${mRC.toFixed(2)}`} sub="this month"/>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+        <Card title="⚠️ Low stock">
+          {low.length===0?<p style={{fontSize:13,color:"#aaa"}}>All items well stocked.</p>
+          :low.map(p=><div key={p.id} style={{background:"#FAECE7",border:"1px solid #F5C4B3",borderRadius:8,padding:"8px 10px",marginBottom:6,fontSize:13,color:"#993C1D",display:"flex",alignItems:"center",gap:8}}>
+            {p.image&&<img src={p.image} alt="" style={{width:24,height:24,objectFit:"cover",borderRadius:4}}/>}
+            <div><strong>{p.name}</strong> — {p.stock} left</div>
+          </div>)}
+        </Card>
+        <Card title="🛍️ Latest orders">
+          {orders.length===0?<p style={{fontSize:13,color:"#aaa"}}>No orders yet.</p>
+          :orders.slice(0,5).map((o,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #f0efe9",fontSize:12}}>
+            <span style={{color:"#666"}}>{o.id} · {o.customer?.name}</span>
+            <div style={{display:"flex",alignItems:"center",gap:6}}><SBadge status={o.status}/><span style={{fontWeight:700}}>GH₵{Number(o.total).toFixed(2)}</span></div>
+          </div>)}
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// PRODUCTS
+// ════════════════════════════════════════════════════════════════════════════
+function Products({products,loadAll}){
+  const emp={name:"",cat:"",wholesale:"",price:"",stock:"",threshold:"10",image:""};
+  const [form,setForm]=useState(emp);
+  const [editId,setEditId]=useState(null);
+  const [search,setSearch]=useState("");
+  const [saving,setSaving]=useState(false);
+  const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+  const save=async()=>{
+    if(!form.name.trim()||!form.cat||!form.price){alert("Fill in name, category, and sales price.");return;}
+    setSaving(true);
+    const payload={name:form.name,cat:form.cat,wholesale:parseFloat(form.wholesale)||0,price:parseFloat(form.price),stock:parseInt(form.stock)||0,threshold:parseInt(form.threshold)||10,image:form.image||""};
+    try{if(editId)await db.patch("products",editId,payload);else await db.post("products",payload);await loadAll();setForm(emp);setEditId(null);}
+    catch(e){alert("Error: "+e.message);}
+    setSaving(false);
+  };
+  const edit=p=>{setForm({name:p.name,cat:p.cat,wholesale:p.wholesale,price:p.price,stock:p.stock,threshold:p.threshold,image:p.image||""});setEditId(p.id);};
+  const del=async id=>{if(!window.confirm("Delete?"))return;try{await db.del("products",id);await loadAll();}catch(e){alert("Error: "+e.message);}};
+  const filtered=products.filter(p=>p.name.toLowerCase().includes(search.toLowerCase()));
+  return(
+    <div style={{display:"grid",gridTemplateColumns:"320px 1fr",gap:14}}>
+      <Card title={editId?"✏️ Edit product":"➕ Add product"}>
+        <FG label="Image"><ImgPicker value={form.image} onChange={v=>set("image",v)}/></FG>
+        <FG label="Product name"><Inp value={form.name} onChange={e=>set("name",e.target.value)} placeholder="e.g. Carrier Bag (pack of 100)"/></FG>
+        <FG label="Category">
+          <div style={{display:"flex",gap:8,marginTop:4}}>
+            {[CAT_DISP,CAT_PLASTIC].map(c=>{const b=catB(c),sel=form.cat===c;return <button key={c} onClick={()=>set("cat",c)} style={{padding:"5px 10px",borderRadius:20,fontSize:11,cursor:"pointer",border:`1px solid ${sel?b.color:"#ddd"}`,background:sel?b.bg:"#fff",color:sel?b.color:"#666",fontWeight:sel?700:400}}>{c}</button>;})}</div>
+        </FG>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+          <FG label="Wholesale (GH₵)"><Inp type="number" min="0" step="0.01" value={form.wholesale} onChange={e=>set("wholesale",e.target.value)} placeholder="0.00"/></FG>
+          <FG label="Sales price (GH₵)"><Inp type="number" min="0" step="0.01" value={form.price} onChange={e=>set("price",e.target.value)} placeholder="0.00"/></FG>
+          <FG label="Stock qty"><Inp type="number" min="0" value={form.stock} onChange={e=>set("stock",e.target.value)} placeholder="0"/></FG>
+          <FG label="Low stock threshold"><Inp type="number" min="0" value={form.threshold} onChange={e=>set("threshold",e.target.value)} placeholder="10"/></FG>
+        </div>
+        <div style={{display:"flex",gap:8,marginTop:4}}>
+          <Btn primary onClick={save} disabled={saving}>{saving?"Saving...":"✓ "+(editId?"Update":"Save")}</Btn>
+          <Btn onClick={()=>{setForm(emp);setEditId(null);}}>Clear</Btn>
+        </div>
+      </Card>
+      <Card title="📦 All products">
+        <Inp value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Search..." style={{marginBottom:10}}/>
+        {filtered.length===0?<p style={{fontSize:13,color:"#aaa"}}>No products yet.</p>
+        :<table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+          <thead><tr>{["","Product","Category","Wholesale","Sale price","Stock",""].map((h,i)=><th key={i} style={{textAlign:"left",fontSize:11,color:"#999",padding:"5px 6px",borderBottom:"1px solid #f0efe9",fontWeight:500}}>{h}</th>)}</tr></thead>
+          <tbody>{filtered.map(p=>{const b=catB(p.cat),low=p.stock<=p.threshold;return(
+            <tr key={p.id} style={{borderBottom:"1px solid #f8f7f3"}}>
+              <td style={{padding:"7px 6px"}}>{p.image?<img src={p.image} alt="" style={{width:32,height:32,objectFit:"cover",borderRadius:5,border:"1px solid #eee"}}/>:<div style={{width:32,height:32,background:"#f0efe9",borderRadius:5,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>📦</div>}</td>
+              <td style={{padding:"7px 6px",fontWeight:600}}>{p.name}</td>
+              <td style={{padding:"7px 6px"}}><Badge text={p.cat} bg={b.bg} color={b.color}/></td>
+              <td style={{padding:"7px 6px"}}>GH₵{Number(p.wholesale).toFixed(2)}</td>
+              <td style={{padding:"7px 6px"}}>GH₵{Number(p.price).toFixed(2)}</td>
+              <td style={{padding:"7px 6px"}}><span style={{background:low?"#FAECE7":"#EAF3DE",color:low?"#993C1D":"#3B6D11",fontSize:11,padding:"2px 6px",borderRadius:20}}>{p.stock}</span></td>
+              <td style={{padding:"7px 6px",whiteSpace:"nowrap"}}><Btn sm onClick={()=>edit(p)}>✏️</Btn><Btn sm danger onClick={()=>del(p.id)} style={{marginLeft:3}}>🗑</Btn></td>
+            </tr>
+          );})}</tbody>
+        </table>}
+      </Card>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// SALE RECORDER
+// ════════════════════════════════════════════════════════════════════════════
+function SaleRecorder({products,cart,setCart,user,loadAll}){
+  const [selId,setSelId]=useState(products[0]?.id||"");
+  const [pt,setPt]=useState("sales");
+  const [qty,setQty]=useState(1);
+  const [saving,setSaving]=useState(false);
+  const add=()=>{
+    const prod=products.find(p=>p.id===parseInt(selId));if(!prod)return;
+    const q=parseInt(qty)||1;if(q>prod.stock){alert(`Only ${prod.stock} in stock.`);return;}
+    const key=`${prod.id}_${pt}`,ex=cart.find(c=>c.key===key);
+    if(ex){const nq=ex.qty+q;if(nq>prod.stock){alert("Exceeds stock.");return;}setCart(cart.map(c=>c.key===key?{...c,qty:nq}:c));}
+    else setCart([...cart,{key,id:prod.id,name:prod.name,image:prod.image||"",qty:q,priceType:pt,unitPrice:pt==="wholesale"?Number(prod.wholesale):Number(prod.price)}]);
+  };
+  const cq=(key,d)=>setCart(cart.map(c=>{if(c.key!==key)return c;const p=products.find(x=>x.id===c.id);return{...c,qty:Math.max(1,Math.min(c.qty+d,p?p.stock:c.qty))};}));
+  const total=cart.reduce((s,c)=>s+c.qty*c.unitPrice,0);
+  const confirm=async()=>{
+    if(!cart.length){alert("No items.");return;}
+    setSaving(true);
+    try{
+      await db.post("sales",{time:new Date().toISOString(),staff_name:user.name,staff_id:user.id,items:cart,total});
+      for(const c of cart){const p=products.find(x=>x.id===c.id);if(p)await db.patch("products",p.id,{stock:Math.max(0,p.stock-c.qty)});}
+      await loadAll();setCart([]);alert(`✅ Sale confirmed! Total: GH₵${total.toFixed(2)}`);
+    }catch(e){alert("Error: "+e.message);}
+    setSaving(false);
+  };
+  return(
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+      <Card title="🛒 Add items">
+        <FG label="Product"><Sel value={selId} onChange={e=>setSelId(e.target.value)}>{products.map(p=><option key={p.id} value={p.id}>{p.name} (Stock: {p.stock})</option>)}</Sel></FG>
+        <FG label="Price type"><Sel value={pt} onChange={e=>setPt(e.target.value)}><option value="sales">Sales price</option><option value="wholesale">Wholesale price</option></Sel></FG>
+        <FG label="Quantity"><Inp type="number" min="1" value={qty} onChange={e=>setQty(e.target.value)}/></FG>
+        <Btn primary onClick={add} style={{width:"100%",justifyContent:"center",marginTop:8}}>+ Add to sale</Btn>
+      </Card>
+      <Card title="🧾 Current sale">
+        {cart.length===0?<p style={{fontSize:13,color:"#aaa"}}>No items yet.</p>
+        :cart.map(c=><div key={c.key} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 8px",background:"#f8f7f3",borderRadius:7,marginBottom:5,fontSize:12}}>
+          {c.image?<img src={c.image} alt="" style={{width:28,height:28,objectFit:"cover",borderRadius:4}}/>:<div style={{width:28,height:28,background:"#e8e7e3",borderRadius:4,display:"flex",alignItems:"center",justifyContent:"center"}}>📦</div>}
+          <div style={{flex:1}}><div style={{fontWeight:600}}>{c.name}</div><div style={{fontSize:11,color:"#999"}}>{c.priceType} · GH₵{c.unitPrice.toFixed(2)}</div></div>
+          <div style={{display:"flex",alignItems:"center",gap:4}}>
+            <button onClick={()=>cq(c.key,-1)} style={{width:22,height:22,border:"1px solid #ddd",background:"#fff",borderRadius:4,cursor:"pointer"}}>−</button>
+            <span style={{minWidth:18,textAlign:"center"}}>{c.qty}</span>
+            <button onClick={()=>cq(c.key,1)} style={{width:22,height:22,border:"1px solid #ddd",background:"#fff",borderRadius:4,cursor:"pointer"}}>+</button>
+          </div>
+          <div style={{fontWeight:700,minWidth:60,textAlign:"right"}}>GH₵{(c.qty*c.unitPrice).toFixed(2)}</div>
+          <button onClick={()=>setCart(cart.filter(x=>x.key!==c.key))} style={{border:"none",background:"none",cursor:"pointer",color:"#bbb",fontSize:16}}>×</button>
+        </div>)}
+        {cart.length>0&&<div style={{background:"#f0efe9",borderRadius:7,padding:"10px 12px",display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:8}}><span style={{fontSize:13,color:"#666"}}>Total</span><span style={{fontSize:20,fontWeight:700}}>GH₵{total.toFixed(2)}</span></div>}
+        <div style={{display:"flex",gap:8,marginTop:10}}>
+          <Btn primary onClick={confirm} disabled={saving} style={{flex:1,justifyContent:"center"}}>{saving?"Saving...":"✓ Confirm & deduct"}</Btn>
+          <Btn danger onClick={()=>setCart([])}>Clear</Btn>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// ORDERS
+// ════════════════════════════════════════════════════════════════════════════
+function Orders({orders,products,loadAll}){
+  const [sel,setSel]=useState(null);
+  const [fs,setFs]=useState("all");
+  const statuses=["pending","confirmed","processing","shipped","delivered","cancelled"];
+  const filtered=fs==="all"?orders:orders.filter(o=>o.status===fs);
+  const upd=async(id,status)=>{
+    try{
+      await db.patch("orders",id,{status},"id");
+      if(status==="delivered"){const o=orders.find(x=>x.id===id);if(o)for(const item of o.items){const p=products.find(x=>x.id===item.id);if(p)await db.patch("products",p.id,{stock:Math.max(0,p.stock-item.qty)});}}
+      await loadAll();if(sel?.id===id)setSel({...sel,status});
+    }catch(e){alert("Error: "+e.message);}
+  };
+  return(
+    <div style={{display:"grid",gridTemplateColumns:sel?"1fr 340px":"1fr",gap:14}}>
+      <Card title="🛍️ Online orders">
+        <div style={{display:"flex",gap:5,marginBottom:12,flexWrap:"wrap"}}>
+          {["all",...statuses].map(s=><button key={s} onClick={()=>setFs(s)} style={{padding:"4px 10px",borderRadius:20,border:"1px solid #ddd",background:fs===s?"#1a1a1a":"#fff",color:fs===s?"#fff":"#333",fontSize:11,cursor:"pointer",fontWeight:fs===s?600:400}}>{s==="all"?"All":s.charAt(0).toUpperCase()+s.slice(1)}</button>)}
+        </div>
+        {filtered.length===0?<p style={{fontSize:13,color:"#aaa"}}>No orders found.</p>
+        :<table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+          <thead><tr>{["Order","Customer","Total","Payment","Status","Action"].map((h,i)=><th key={i} style={{textAlign:"left",fontSize:11,color:"#999",padding:"5px 6px",borderBottom:"1px solid #f0efe9",fontWeight:500}}>{h}</th>)}</tr></thead>
+          <tbody>{filtered.map(o=><tr key={o.id} style={{borderBottom:"1px solid #f8f7f3",cursor:"pointer"}} onClick={()=>setSel(o)}>
+            <td style={{padding:"8px 6px",fontWeight:600}}>{o.id}</td>
+            <td style={{padding:"8px 6px"}}>{o.customer?.name}<div style={{fontSize:11,color:"#aaa"}}>{o.customer?.phone}</div></td>
+            <td style={{padding:"8px 6px",fontWeight:700}}>GH₵{Number(o.total).toFixed(2)}</td>
+            <td style={{padding:"8px 6px",fontSize:11}}>{o.customer?.payment==="momo"?`📱${o.customer?.momoNetwork}`:"💵COD"}</td>
+            <td style={{padding:"8px 6px"}}><SBadge status={o.status}/></td>
+            <td style={{padding:"8px 6px"}} onClick={e=>e.stopPropagation()}>
+              <Sel value={o.status} onChange={e=>upd(o.id,e.target.value)} style={{width:110,fontSize:11,padding:"3px 5px"}}>
+                {statuses.map(s=><option key={s} value={s}>{s.charAt(0).toUpperCase()+s.slice(1)}</option>)}
+              </Sel>
+            </td>
+          </tr>)}</tbody>
+        </table>}
+      </Card>
+      {sel&&<Card title={`📋 ${sel.id}`}>
+        <button onClick={()=>setSel(null)} style={{float:"right",border:"none",background:"none",cursor:"pointer",fontSize:18,color:"#aaa"}}>×</button>
+        <div style={{fontSize:12,marginBottom:12}}>
+          <div style={{marginBottom:4}}><strong>Customer:</strong> {sel.customer?.name}</div>
+          <div style={{marginBottom:4}}><strong>Phone:</strong> {sel.customer?.phone}</div>
+          <div style={{marginBottom:4}}><strong>Region:</strong> {sel.customer?.region}</div>
+          <div style={{marginBottom:4}}><strong>Fulfilment:</strong> {sel.customer?.delivery==="delivery"?"🚚 Delivery":"🏪 Pickup"}</div>
+          {sel.customer?.delivery==="delivery"&&<div style={{marginBottom:4}}><strong>Address:</strong> {sel.customer?.address}</div>}
+          <div style={{marginBottom:4}}><strong>Payment:</strong> {sel.customer?.payment==="momo"?`📱 ${sel.customer?.momoNetwork} · ${sel.customer?.momoNumber}`:"💵 Cash on Delivery"}</div>
+          {sel.customer?.notes&&<div><strong>Notes:</strong> {sel.customer?.notes}</div>}
+        </div>
+        <div style={{borderTop:"1px solid #f0efe9",paddingTop:8,marginBottom:8}}>
+          {sel.items?.map((item,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:12,padding:"4px 0",borderBottom:"1px solid #f8f7f3"}}><span>{item.name} × {item.qty}</span><span style={{fontWeight:600}}>GH₵{(item.qty*item.price).toFixed(2)}</span></div>)}
+          <div style={{display:"flex",justifyContent:"space-between",fontWeight:700,padding:"7px 0",fontSize:14}}><span>Total</span><span>GH₵{Number(sel.total).toFixed(2)}</span></div>
+        </div>
+        <FG label="Update status"><Sel value={sel.status} onChange={e=>upd(sel.id,e.target.value)}>{statuses.map(s=><option key={s} value={s}>{s.charAt(0).toUpperCase()+s.slice(1)}</option>)}</Sel></FG>
+        <div style={{fontSize:11,color:"#aaa",marginTop:5}}>⚠️ "Delivered" auto-deducts stock.</div>
+      </Card>}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// RESTOCK
+// ════════════════════════════════════════════════════════════════════════════
+function Restock({products,restocks,user,loadAll}){
+  const emp={productId:"",supplier:"",qty:"",amountPaid:"",date:new Date().toISOString().slice(0,10),notes:""};
+  const [form,setForm]=useState(emp);
+  const [saving,setSaving]=useState(false);
+  const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+  const save=async()=>{
+    const prod=products.find(p=>p.id===parseInt(form.productId));
+    if(!prod||!form.qty||!form.supplier){alert("Fill in product, supplier, and quantity.");return;}
+    setSaving(true);
+    try{
+      const q=parseInt(form.qty);
+      await db.post("restocks",{product_id:prod.id,product_name:prod.name,supplier:form.supplier,qty:q,amount_paid:parseFloat(form.amountPaid)||0,date:form.date,notes:form.notes,staff_name:user.name});
+      await db.patch("products",prod.id,{stock:prod.stock+q});
+      await loadAll();setForm(emp);alert(`✅ Restock saved. ${prod.name} updated to ${prod.stock+q}.`);
+    }catch(e){alert("Error: "+e.message);}
+    setSaving(false);
+  };
+  return(
+    <div style={{display:"grid",gridTemplateColumns:"320px 1fr",gap:14}}>
+      <Card title="🔄 Record restock">
+        <FG label="Product"><Sel value={form.productId} onChange={e=>set("productId",e.target.value)}><option value="">Select product...</option>{products.map(p=><option key={p.id} value={p.id}>{p.name} (Current: {p.stock})</option>)}</Sel></FG>
+        <FG label="Supplier name"><Inp value={form.supplier} onChange={e=>set("supplier",e.target.value)} placeholder="Supplier name"/></FG>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+          <FG label="Quantity"><Inp type="number" min="1" value={form.qty} onChange={e=>set("qty",e.target.value)} placeholder="0"/></FG>
+          <FG label="Amount paid (GH₵)"><Inp type="number" min="0" step="0.01" value={form.amountPaid} onChange={e=>set("amountPaid",e.target.value)} placeholder="0.00"/></FG>
+        </div>
+        <FG label="Date"><Inp type="date" value={form.date} onChange={e=>set("date",e.target.value)}/></FG>
+        <FG label="Notes"><Inp value={form.notes} onChange={e=>set("notes",e.target.value)} placeholder="Optional..."/></FG>
+        <Btn primary onClick={save} disabled={saving} style={{width:"100%",justifyContent:"center",marginTop:4}}>{saving?"Saving...":"✓ Save & update stock"}</Btn>
+      </Card>
+      <Card title="📋 Restock history">
+        {restocks.length===0?<p style={{fontSize:13,color:"#aaa"}}>No restocks yet.</p>
+        :<table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+          <thead><tr>{["Date","Product","Supplier","Qty","Paid","Staff"].map((h,i)=><th key={i} style={{textAlign:"left",fontSize:11,color:"#999",padding:"5px 6px",borderBottom:"1px solid #f0efe9",fontWeight:500}}>{h}</th>)}</tr></thead>
+          <tbody>{restocks.map(r=><tr key={r.id} style={{borderBottom:"1px solid #f8f7f3"}}>
+            <td style={{padding:"7px 6px"}}>{r.date}</td>
+            <td style={{padding:"7px 6px",fontWeight:600}}>{r.product_name}</td>
+            <td style={{padding:"7px 6px"}}>{r.supplier}</td>
+            <td style={{padding:"7px 6px",color:"#3B6D11",fontWeight:600}}>+{r.qty}</td>
+            <td style={{padding:"7px 6px"}}>GH₵{Number(r.amount_paid).toFixed(2)}</td>
+            <td style={{padding:"7px 6px",color:"#888"}}>{r.staff_name}</td>
+          </tr>)}</tbody>
+        </table>}
+      </Card>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// REPORTS
+// ════════════════════════════════════════════════════════════════════════════
+function Reports({sales,restocks,orders}){
+  const now=new Date();
+  const months=Array.from({length:12},(_,i)=>({value:i,label:new Date(now.getFullYear(),i,1).toLocaleString("default",{month:"long"})}));
+  const [month,setMonth]=useState(now.getMonth());
+  const [year,setYear]=useState(now.getFullYear());
+  const [view,setView]=useState("sales");
+  const inM=s=>{const d=new Date(s.time||s.date);return d.getMonth()===month&&d.getFullYear()===year;};
+  const mS=sales.filter(inM),mR=restocks.filter(inM),mO=orders.filter(inM);
+  const rev=mS.reduce((s,x)=>s+Number(x.total),0);
+  const units=mS.reduce((s,x)=>s+x.items.reduce((a,i)=>a+i.qty,0),0);
+  const rc=mR.reduce((s,r)=>s+Number(r.amount_paid),0);
+  const oRev=mO.filter(o=>o.status==="delivered").reduce((s,o)=>s+Number(o.total),0);
+  const dm={};mS.forEach(s=>{const d=new Date(s.time).toLocaleDateString("en-GH",{day:"numeric",month:"short"});dm[d]=(dm[d]||0)+Number(s.total);});
+  const daily=Object.entries(dm),maxD=daily.length?Math.max(...daily.map(d=>d[1])):1;
+  const tally={};
+  mS.forEach(s=>s.items.forEach(i=>{tally[i.name]=(tally[i.name]||0)+i.qty;}));
+  mO.filter(o=>o.status==="delivered").forEach(o=>o.items?.forEach(i=>{tally[i.name]=(tally[i.name]||0)+i.qty;}));
+  const top=Object.entries(tally).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  return(
+    <div>
+      <div style={{display:"flex",gap:8,marginBottom:16,alignItems:"center",flexWrap:"wrap"}}>
+        <Sel value={month} onChange={e=>setMonth(parseInt(e.target.value))} style={{width:130}}>{months.map(m=><option key={m.value} value={m.value}>{m.label}</option>)}</Sel>
+        <Sel value={year} onChange={e=>setYear(parseInt(e.target.value))} style={{width:85}}>{[now.getFullYear(),now.getFullYear()-1].map(y=><option key={y} value={y}>{y}</option>)}</Sel>
+        <div style={{display:"flex",gap:4}}>
+          {[["sales","🧾 Sales"],["online","🛍️ Online"],["restock","🔄 Restock"]].map(([v,l])=><button key={v} onClick={()=>setView(v)} style={{padding:"6px 12px",borderRadius:8,border:"1px solid #ddd",background:view===v?"#1a1a1a":"#fff",color:view===v?"#fff":"#333",fontSize:12,cursor:"pointer",fontWeight:view===v?700:400}}>{l}</button>)}
+        </div>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10,marginBottom:16}}>
+        <MCard label="In-store revenue" value={`GH₵${rev.toFixed(2)}`} sub={`${mS.length} transactions`}/>
+        <MCard label="Online revenue" value={`GH₵${oRev.toFixed(2)}`} color="#185FA5"/>
+        <MCard label="Restock cost" value={`GH₵${rc.toFixed(2)}`}/>
+        <MCard label="Gross profit" value={`GH₵${(rev+oRev-rc).toFixed(2)}`} danger={(rev+oRev-rc)<0}/>
+      </div>
+      {view==="sales"&&<div style={{display:"grid",gridTemplateColumns:"1.4fr 1fr",gap:14}}>
+        <Card title={`📅 Daily sales — ${months[month].label} ${year}`}>
+          {daily.length===0?<p style={{fontSize:13,color:"#aaa"}}>No sales this month.</p>
+          :daily.map(([d,v])=><div key={d} style={{marginBottom:8}}><div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:3}}><span style={{color:"#666"}}>{d}</span><span style={{fontWeight:700}}>GH₵{v.toFixed(2)}</span></div><div style={{background:"#f0efe9",borderRadius:4,height:5}}><div style={{background:"#1a1a1a",height:5,borderRadius:4,width:`${Math.round(v/maxD*100)}%`,opacity:.7}}/></div></div>)}
+        </Card>
+        <Card title="🏆 Top products">
+          {top.length===0?<p style={{fontSize:13,color:"#aaa"}}>No data.</p>
+          :top.map(([name,qty],i)=><div key={i} style={{marginBottom:10}}><div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:3}}><span>{name}</span><span style={{fontWeight:700}}>{qty} units</span></div><div style={{background:"#f0efe9",borderRadius:4,height:5}}><div style={{background:"#3B6D11",height:5,borderRadius:4,width:`${Math.round(qty/top[0][1]*100)}%`,opacity:.8}}/></div></div>)}
+        </Card>
+      </div>}
+      {view==="online"&&<Card title={`🛍️ Online orders — ${months[month].label} ${year}`}>
+        {mO.length===0?<p style={{fontSize:13,color:"#aaa"}}>No online orders this month.</p>
+        :<table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+          <thead><tr>{["Order","Customer","Region","Items","Total","Payment","Status"].map((h,i)=><th key={i} style={{textAlign:"left",fontSize:11,color:"#999",padding:"5px 6px",borderBottom:"1px solid #f0efe9",fontWeight:500}}>{h}</th>)}</tr></thead>
+          <tbody>{mO.map(o=><tr key={o.id} style={{borderBottom:"1px solid #f8f7f3"}}>
+            <td style={{padding:"7px 6px",fontWeight:600}}>{o.id}</td>
+            <td style={{padding:"7px 6px"}}>{o.customer?.name}</td>
+            <td style={{padding:"7px 6px",color:"#888"}}>{o.customer?.region}</td>
+            <td style={{padding:"7px 6px"}}>{o.items?.reduce((s,i)=>s+i.qty,0)}</td>
+            <td style={{padding:"7px 6px",fontWeight:700}}>GH₵{Number(o.total).toFixed(2)}</td>
+            <td style={{padding:"7px 6px",fontSize:11}}>{o.customer?.payment==="momo"?`📱${o.customer?.momoNetwork}`:"💵COD"}</td>
+            <td style={{padding:"7px 6px"}}><SBadge status={o.status}/></td>
+          </tr>)}</tbody>
+        </table>}
+      </Card>}
+      {view==="restock"&&<Card title={`🔄 Restock — ${months[month].label} ${year}`}>
+        {mR.length===0?<p style={{fontSize:13,color:"#aaa"}}>No restocks this month.</p>
+        :<table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+          <thead><tr>{["Date","Product","Supplier","Qty","Paid","Staff"].map((h,i)=><th key={i} style={{textAlign:"left",fontSize:11,color:"#999",padding:"5px 6px",borderBottom:"1px solid #f0efe9",fontWeight:500}}>{h}</th>)}</tr></thead>
+          <tbody>{mR.map(r=><tr key={r.id} style={{borderBottom:"1px solid #f8f7f3"}}>
+            <td style={{padding:"7px 6px"}}>{r.date}</td>
+            <td style={{padding:"7px 6px",fontWeight:600}}>{r.product_name}</td>
+            <td style={{padding:"7px 6px"}}>{r.supplier}</td>
+            <td style={{padding:"7px 6px",color:"#3B6D11",fontWeight:600}}>+{r.qty}</td>
+            <td style={{padding:"7px 6px"}}>GH₵{Number(r.amount_paid).toFixed(2)}</td>
+            <td style={{padding:"7px 6px",color:"#888"}}>{r.staff_name}</td>
+          </tr>)}</tbody>
+        </table>}
+      </Card>}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// STAFF
+// ════════════════════════════════════════════════════════════════════════════
+function Staff({users,loadAll}){
+  const emp={name:"",username:"",password:"",role:"admin"};
+  const [form,setForm]=useState(emp);
+  const [editId,setEditId]=useState(null);
+  const [saving,setSaving]=useState(false);
+  const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+  const save=async()=>{
+    if(!form.name||!form.username||!form.password){alert("Fill all fields.");return;}
+    if(!editId&&users.find(u=>u.username===form.username)){alert("Username taken.");return;}
+    setSaving(true);
+    try{
+      if(editId)await db.patch("users",editId,{name:form.name,username:form.username,password:form.password,role:form.role});
+      else await db.post("users",{name:form.name,username:form.username,password:form.password,role:form.role});
+      await loadAll();setForm(emp);setEditId(null);
+    }catch(e){alert("Error: "+e.message);}
+    setSaving(false);
+  };
+  const del=async id=>{if(id===1){alert("Cannot delete CEO.");return;}if(!window.confirm("Remove?"))return;try{await db.del("users",id);await loadAll();}catch(e){alert("Error: "+e.message);}};
+  const edit=u=>{setForm({name:u.name,username:u.username,password:u.password,role:u.role});setEditId(u.id);};
+  return(
+    <div style={{display:"grid",gridTemplateColumns:"300px 1fr",gap:14}}>
+      <Card title={editId?"✏️ Edit staff":"➕ Add staff"}>
+        <FG label="Full name"><Inp value={form.name} onChange={e=>set("name",e.target.value)} placeholder="e.g. Kofi Mensah"/></FG>
+        <FG label="Username"><Inp value={form.username} onChange={e=>set("username",e.target.value)} placeholder="e.g. kofi"/></FG>
+        <FG label="Password"><Inp value={form.password} onChange={e=>set("password",e.target.value)} placeholder="Set a password"/></FG>
+        <FG label="Role"><Sel value={form.role} onChange={e=>set("role",e.target.value)}><option value="admin">Admin</option></Sel></FG>
+        <div style={{display:"flex",gap:8,marginTop:4}}>
+          <Btn primary onClick={save} disabled={saving}>{saving?"Saving...":"✓ "+(editId?"Update":"Add")}</Btn>
+          <Btn onClick={()=>{setForm(emp);setEditId(null);}}>Clear</Btn>
+        </div>
+      </Card>
+      <Card title="👥 Staff accounts">
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+          <thead><tr>{["Name","Username","Role",""].map((h,i)=><th key={i} style={{textAlign:"left",fontSize:11,color:"#999",padding:"6px 8px",borderBottom:"1px solid #f0efe9",fontWeight:500}}>{h}</th>)}</tr></thead>
+          <tbody>{users.map(u=><tr key={u.id} style={{borderBottom:"1px solid #f8f7f3"}}>
+            <td style={{padding:"9px 8px",fontWeight:600}}>{u.name}</td>
+            <td style={{padding:"9px 8px",color:"#666"}}>{u.username}</td>
+            <td style={{padding:"9px 8px"}}><span style={{background:u.role==="ceo"?"#FAEEDA":"#E6F1FB",color:u.role==="ceo"?"#854F0B":"#185FA5",fontSize:11,padding:"2px 8px",borderRadius:20,fontWeight:500}}>{u.role.toUpperCase()}</span></td>
+            <td style={{padding:"9px 8px",whiteSpace:"nowrap"}}>
+              <Btn sm onClick={()=>edit(u)} disabled={u.role==="ceo"}>✏️</Btn>
+              <Btn sm danger onClick={()=>del(u.id)} style={{marginLeft:4}} disabled={u.role==="ceo"}>🗑</Btn>
+            </td>
+          </tr>)}</tbody>
+        </table>
+        <div style={{marginTop:10,padding:10,background:"#f8f7f3",borderRadius:8,fontSize:11,color:"#999"}}>Admin: Dashboard, Products, Sales, Reports, Restock, Orders. CEO: full access + Staff.</div>
+      </Card>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
