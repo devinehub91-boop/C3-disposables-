@@ -96,7 +96,7 @@ function App(){
   },[]);
 
   useEffect(()=>{loadAll();},[loadAll]);
-  useEffect(()=>{const i=setInterval(loadAll,90000);return()=>clearInterval(i);},[loadAll]);
+  useEffect(()=>{const i=setInterval(loadAll,3000000);return()=>clearInterval(i);},[loadAll]);
 
   const ModeBar=()=>(
     <div style={{position:"fixed",bottom:16,right:16,zIndex:100,display:"flex",gap:6,background:"#1a1a1a",borderRadius:30,padding:"6px 10px",boxShadow:"0 4px 20px rgba(0,0,0,.3)"}}>
